@@ -217,6 +217,10 @@ spec = describe "FingerTree" $ do
       liftIO $ iter_empty iter >>= assertEqual "iter_empty" True
   prop "extend" . checkingTree2 $ \xs tree1 ys tree2 ->
     bracket (tree_extend tree1 tree2) tree_decRef $ equalTree (xs <> ys)
+  prop "index" $ \(NonEmpty xs) -> forAll (choose (0, length xs - 1)) $ \n ->
+    flip checkingTree (Seq.fromList xs) $ \xs tree ->
+      tree_index tree (fromIntegral n) >>=
+        assertEqual "index" (xs `Seq.index` n) . ptrToInt
 
 main :: IO ()
 main = HSpec.hspecWith HSpec.defaultConfig

@@ -949,4 +949,49 @@ Tree* Tree_extend(Tree* xs, Tree* ys) {
 
 // }}}
 
+// {{{ index
+
+static void* Node_index(Node* node, size_t index) {
+	assert(node != NULL);
+	assert(index < node->size);
+	if(node->size == 1)
+		return node->value;
+	if(index < node->items[0]->size)
+		return Node_index(node->items[0], index);
+	index -= node->items[0]->size;
+	if(index < node->items[0]->size)
+		return Node_index(node->items[1], index);
+	index -= node->items[1]->size;
+	return Node_index(node->items[2], index);
+}
+
+static void* Digit_index(Digit* digit, size_t index) {
+	assert(index < digit->size);
+	for(size_t i = 0; i < digit->count; ++i)
+		if(index < digit->items[i]->size)
+			return Node_index(digit->items[i], index);
+		else
+			index -= digit->items[i]->size;
+	assert(false);
+}
+
+void* Tree_index(Tree* tree, size_t index) {
+	assert(index < Tree_size(tree));
+	switch(tree->type) {
+		case SingleT: return Node_index(tree->single, index);
+		case DeepT: {
+			if(index < tree->deep->left->size)
+				return Digit_index(tree->deep->left, index);
+			index -= tree->deep->left->size;
+			if(index < Tree_size(tree->deep->middle))
+				return Tree_index(tree->deep->middle, index);
+			index -= Tree_size(tree->deep->middle);
+			return Digit_index(tree->deep->right, index);
+		}
+		default: assert(false);
+	}
+}
+
+// }}}
+
 // vim: set foldmethod=marker foldlevel=0 :

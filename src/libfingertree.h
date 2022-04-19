@@ -189,4 +189,6 @@ Iter* Iter_fromTree(Tree* tree);
 
 void** Tree_toArray(Tree* tree);
 
+void* Tree_index(Tree* tree, size_t index);
+
 // vim: set foldmethod=marker foldlevel=0 :
