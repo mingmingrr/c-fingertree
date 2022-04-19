@@ -21,6 +21,7 @@ import qualified Data.Sequence.Internal as Seq
 import Test.Hspec
 import Test.QuickCheck
 import Test.Hspec.QuickCheck
+import Test.HUnit.Lang
 import qualified Test.Hspec.Core.Runner as HSpec
 
 import Text.Pretty.Simple
@@ -135,13 +136,12 @@ instance Valid a => Valid (Seq.Digit a) where
 withTree :: Seq.Seq Int -> (Ptr Tree -> IO a) -> IO a
 withTree (Seq.Seq tree) = bracket (toTarget tree) tree_decRef
 
-equalTree :: Seq.Seq Int -> Ptr Tree -> IO Bool
-equalTree seq ptr = evalContT . callCC $ \cont -> do
-  liftIO (tree_size ptr) >>= \size ->
-    when (fromIntegral size /= length seq) (cont False)
-  arr <- ContT $ bracket (tree_toArray ptr) free
-  (xs :: [CSize]) <- liftIO $ peekArray (length seq) (castPtr arr)
-  return $ toList seq == map fromIntegral xs
+equalTree :: Seq.Seq Int -> Ptr Tree -> IO ()
+equalTree seq ptr = do
+  tree_size ptr >>= assertEqual "equal size" (length seq) . fromIntegral
+  bracket (tree_toArray ptr) free $ \arr ->
+    peekArray (length seq) (castPtr arr) >>= \(xs :: [CSize]) ->
+      assertEqual "equal items" (toList seq) (map fromIntegral xs)
 
 ptrToInt :: Ptr a -> Int
 ptrToInt ptr = let IntPtr x = ptrToIntPtr ptr in x
@@ -156,53 +156,67 @@ freeView ptr = do
     tree_decRef viewTree
     free ptr
 
-checkRefs :: IO Bool -> IO Bool
-checkRefs m = refCount >>= \r -> m >>= \res ->
-  if res then (== r) <$> refCount else pure False
+checkRefs :: IO () -> IO ()
+checkRefs m = refCount >>= \x -> m >> refCount >>= \y ->
+  assertEqual "ref count" x y
+
+checkView :: Maybe (Int, Seq.Seq Int) -> Ptr View -> IO ()
+checkView expect view = peek view >>= \View{..} -> case expect of
+  Nothing -> do
+    assertEqual "view item" nullPtr viewItem
+    assertEqual "view tree" nullPtr viewTree
+  Just (x, xs) -> do
+    assertEqual "view item" x (ptrToInt viewItem)
+    equalTree xs viewTree
+
+checkingTree
+  :: (Seq.Seq Int -> Ptr Tree -> IO ())
+  -> Seq.Seq (Positive Int) -> ()
+checkingTree f xs = unsafePerformIO . checkRefs . withTree xs' $ f xs'
+  where xs' = fmap getPositive xs
+
+checkingTree2
+  :: (Seq.Seq Int -> Ptr Tree -> Seq.Seq Int -> Ptr Tree -> IO ())
+  -> Seq.Seq (Positive Int) -> Seq.Seq (Positive Int) -> ()
+checkingTree2 f xs ys = unsafePerformIO . checkRefs
+  . withTree xs' $ \xt -> withTree ys' $ \yt -> f xs' xt ys' yt
+  where xs' = fmap getPositive xs ; ys' = fmap getPositive ys
 
 spec :: Spec
 spec = describe "FingerTree" $ do
-  prop "toArray" $ \(fmap getPositive -> xs) ->
-    unsafePerformIO . checkRefs . withTree xs $ equalTree xs 
-  prop "size" $ \(fmap getPositive -> xs) ->
-    unsafePerformIO . checkRefs . withTree xs $ \tree ->
-      (== length xs) . fromIntegral <$> tree_size tree
-  prop "viewLeft" $ \(fmap getPositive -> xs) ->
-    unsafePerformIO . checkRefs . evalContT $ do
-      tree <- ContT $ withTree xs
-      View y ys <- (liftIO . peek =<<)
-        . ContT $ bracket (tree_viewLeft tree) freeView
+  prop "toArray" $ checkingTree equalTree
+  prop "size" . checkingTree $ \xs tree ->
+    tree_size tree >>= assertEqual "tree_size" (length xs) . fromIntegral
+  prop "viewLeft" . checkingTree $ \xs tree ->
+    bracket (tree_viewLeft tree) freeView $ \view ->
       case Seq.viewl xs of
-        Seq.EmptyL -> return $ y == nullPtr && ys == nullPtr
-        z Seq.:< zs -> liftIO $ (z == ptrToInt y &&) <$> equalTree zs ys
-  prop "viewRight" $ \(fmap getPositive -> xs) ->
-    unsafePerformIO . checkRefs . evalContT $ do
-      tree <- ContT $ withTree xs
-      View y ys <- (liftIO . peek =<<)
-        . ContT $ bracket (tree_viewRight tree) freeView
+        Seq.EmptyL -> checkView Nothing view
+        z Seq.:< zs -> checkView (Just (z, zs)) view
+  prop "viewLeft" . checkingTree $ \xs tree ->
+    bracket (tree_viewRight tree) freeView $ \view ->
       case Seq.viewr xs of
-        Seq.EmptyR -> return $ y == nullPtr && ys == nullPtr
-        zs Seq.:> z -> liftIO $ (z == ptrToInt y &&) <$> equalTree zs ys
-  prop "appendLeft" $ \(Positive x) (fmap getPositive -> xs) ->
-    unsafePerformIO . checkRefs . evalContT $ do
-      tree <- ContT $ withTree xs
-      tree' <- ContT $ bracket (tree_appendLeft tree (intToPtr x)) tree_decRef
+        Seq.EmptyR -> checkView Nothing view
+        zs Seq.:> z -> checkView (Just (z, zs)) view
+  prop "appendLeft" $ \(Positive x) -> checkingTree $ \xs tree ->
+    bracket (tree_appendLeft tree (intToPtr x)) tree_decRef $ \tree' ->
       liftIO $ equalTree (x Seq.<| xs) tree'
-  prop "appendRight" $ \(Positive x) (fmap getPositive -> xs) ->
-    unsafePerformIO . checkRefs . evalContT $ do
-      tree <- ContT $ withTree xs
-      tree' <- ContT $ bracket (tree_appendRight tree (intToPtr x)) tree_decRef
+  prop "appendRight" $ \(Positive x) -> checkingTree $ \xs tree ->
+    bracket (tree_appendRight tree (intToPtr x)) tree_decRef $ \tree' ->
       liftIO $ equalTree (xs Seq.|> x) tree'
-  prop "iter" $ \(fmap getPositive -> xs) ->
-    unsafePerformIO . checkRefs . evalContT . callCC $ \cont -> do
-      tree <- ContT $ withTree xs
-      iter <- ContT $ bracket (iter_fromTree tree) free
-      let run [] = iter_empty iter
-          run (x:xs) = evalContT . callCC $ \cont -> do
-            liftIO (iter_empty iter) >>= \empty -> when empty (cont False)
-            liftIO (iter_next iter) >>= \item -> when (ptrToInt item /= x) (cont False)
-            liftIO (run xs)
-      liftIO $ run (toList xs)
+  prop "iter" . checkingTree $ \xs tree ->
+    bracket (iter_fromTree tree) free $ \iter -> do
+      liftIO . forM_ (toList xs) $ \x -> do
+        iter_empty iter >>= assertEqual "iter_empty" False
+        iter_next iter >>= assertEqual "iter_next" x . ptrToInt
+      liftIO $ iter_empty iter >>= assertEqual "iter_empty" True
+  prop "extend" . checkingTree2 $ \xs tree1 ys tree2 ->
+    bracket (tree_extend tree1 tree2) tree_decRef $ \tree3 -> do
+      tree_print tree1
+      putStrLn (replicate 20 '-')
+      tree_print tree2
+      putStrLn (replicate 20 '-')
+      tree_print tree3
+      putStrLn (replicate 40 '=')
 
 main :: IO ()
 main = HSpec.hspecWith HSpec.defaultConfig
