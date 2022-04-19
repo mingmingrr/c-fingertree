@@ -478,7 +478,7 @@ bool Tree_empty(Tree* tree) {
 size_t Tree_size(Tree* tree) {
 	switch(tree->type) {
 		case EmptyT:  return 0;
-		case SingleT: assert(tree->single->size == 1); return 1;
+		case SingleT: return tree->single->size;
 		case DeepT:   return tree->deep->size;
 		default:      assert(false);
 	}
@@ -906,39 +906,40 @@ Tree* Tree_extend(Tree* xs, Tree* ys) {
 			case EmptyT: return Tree_incRef(xs);
 			case SingleT: return Tree_appendRightNode(xs, Node_incRef(ys->single));
 			case DeepT: {
+				size_t size = xs->deep->size + ys->deep->size;
 				Node* mid[8]; size_t count = 0;
 				for(; count < xs->deep->right->count; ++count)
-					mid[count] = xs->deep->right->items[count];
+					mid[count] = Node_incRef(xs->deep->right->items[count]);
 				for(size_t i = 0; i < ys->deep->left->count; ++i, ++count)
-					mid[count] = ys->deep->left->items[i];
-				Tree_incRef(ys);
+					mid[count] = Node_incRef(ys->deep->left->items[i]);
+				Tree* right = Tree_incRef(ys->deep->middle);
 				switch(count) {
-					case 8: ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+					case 8: right = Tree_decRefRet(right, Tree_appendLeftNode(right,
 						Node_makeS(mid[5], mid[6], mid[7])));
-					case 5: ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+					case 5: right = Tree_decRefRet(right, Tree_appendLeftNode(right,
 						Node_makeS(mid[2], mid[3], mid[4])));
-					case 2: ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+					case 2: right = Tree_decRefRet(right, Tree_appendLeftNode(right,
 						Node_makeS(mid[0], mid[1], NULL)));
 					break;
-					case 6: ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+					case 6: right = Tree_decRefRet(right, Tree_appendLeftNode(right,
 						Node_makeS(mid[3], mid[4], mid[5])));
-					case 3: ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+					case 3: right = Tree_decRefRet(right, Tree_appendLeftNode(right,
 						Node_makeS(mid[0], mid[1], mid[2])));
 					break;
-					case 7: ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+					case 7: right = Tree_decRefRet(right, Tree_appendLeftNode(right,
 						Node_makeS(mid[4], mid[5], mid[6])));
 					case 4:
-						ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+						right = Tree_decRefRet(right, Tree_appendLeftNode(right,
 							Node_makeS(mid[2], mid[3], NULL)));
-						ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+						right = Tree_decRefRet(right, Tree_appendLeftNode(right,
 							Node_makeS(mid[0], mid[1], NULL)));
 					break;
 					default: assert(false);
 				}
-				return Deep_make(xs->deep->size + ys->deep->size,
+				return Tree_decRefRet(right, Deep_make(size,
 					Digit_incRef(xs->deep->left),
-					Tree_extend(xs->deep->middle, ys->deep->middle),
-					Digit_incRef(ys->deep->right));
+					Tree_extend(xs->deep->middle, right),
+					Digit_incRef(ys->deep->right)));
 			}
 			default: assert(false);
 		}

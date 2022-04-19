@@ -156,9 +156,13 @@ freeView ptr = do
     tree_decRef viewTree
     free ptr
 
-checkRefs :: IO () -> IO ()
-checkRefs m = refCount >>= \x -> m >> refCount >>= \y ->
+checkRefs :: IO a -> IO a
+checkRefs m = do
+  x <- refCount
+  m' <- m
+  y <- refCount
   assertEqual "ref count" x y
+  return m'
 
 checkView :: Maybe (Int, Seq.Seq Int) -> Ptr View -> IO ()
 checkView expect view = peek view >>= \View{..} -> case expect of
@@ -170,14 +174,16 @@ checkView expect view = peek view >>= \View{..} -> case expect of
     equalTree xs viewTree
 
 checkingTree
-  :: (Seq.Seq Int -> Ptr Tree -> IO ())
-  -> Seq.Seq (Positive Int) -> ()
+  :: Testable p
+  => (Seq.Seq Int -> Ptr Tree -> IO p)
+  -> Seq.Seq (Positive Int) -> p
 checkingTree f xs = unsafePerformIO . checkRefs . withTree xs' $ f xs'
   where xs' = fmap getPositive xs
 
 checkingTree2
-  :: (Seq.Seq Int -> Ptr Tree -> Seq.Seq Int -> Ptr Tree -> IO ())
-  -> Seq.Seq (Positive Int) -> Seq.Seq (Positive Int) -> ()
+  :: Testable p
+  => (Seq.Seq Int -> Ptr Tree -> Seq.Seq Int -> Ptr Tree -> IO p)
+  -> Seq.Seq (Positive Int) -> Seq.Seq (Positive Int) -> p
 checkingTree2 f xs ys = unsafePerformIO . checkRefs
   . withTree xs' $ \xt -> withTree ys' $ \yt -> f xs' xt ys' yt
   where xs' = fmap getPositive xs ; ys' = fmap getPositive ys
@@ -210,13 +216,7 @@ spec = describe "FingerTree" $ do
         iter_next iter >>= assertEqual "iter_next" x . ptrToInt
       liftIO $ iter_empty iter >>= assertEqual "iter_empty" True
   prop "extend" . checkingTree2 $ \xs tree1 ys tree2 ->
-    bracket (tree_extend tree1 tree2) tree_decRef $ \tree3 -> do
-      tree_print tree1
-      putStrLn (replicate 20 '-')
-      tree_print tree2
-      putStrLn (replicate 20 '-')
-      tree_print tree3
-      putStrLn (replicate 40 '=')
+    bracket (tree_extend tree1 tree2) tree_decRef $ equalTree (xs <> ys)
 
 main :: IO ()
 main = HSpec.hspecWith HSpec.defaultConfig

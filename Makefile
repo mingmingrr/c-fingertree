@@ -8,7 +8,7 @@ build/libfingertree: build/libfingertree.o build/main.o
 	gcc -g -o build/libfingertree build/libfingertree.o build/main.o
 
 build/libfingertree.out: build/libfingertree
-	( unbuffer valgrind build/libfingertree 2>&3 \
+	( unbuffer timeout 30 valgrind build/libfingertree 2>&3 \
 		| tee build/libfingertree.out ) 3>&1 1>&2 \
 		| tee build/libfingertree.err
 
@@ -25,7 +25,7 @@ build/FingerTreeSpec: build/FingerTree.hs build/FingerTreeSpec.hs build/libfinge
 	touch build/FingerTreeSpec
 
 build/FingerTreeSpec.out: build/FingerTreeSpec
-	( unbuffer build/FingerTreeSpec 2>&3 \
+	( unbuffer timeout 30 build/FingerTreeSpec 2>&3 \
 		| tee build/FingerTreeSpec.out ) 3>&1 1>&2 \
 		| tee build/FingerTreeSpec.err
 
