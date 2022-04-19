@@ -90,11 +90,19 @@ IterCons* IterCons_incRef(IterCons* cons);
 
 void Node_decRef(Node* node);
 
+void* Node_decRefRet(Node* node, void* ret);
+
 void Digit_decRef(Digit* digit);
+
+void* Digit_decRefRet(Digit* digit, void* ret);
 
 void Tree_decRef(Tree* tree);
 
+void* Tree_decRefRet(Tree* tree, void* ret);
+
 void IterCons_decRef(IterCons* cons);
+
+void* IterCons_decRefRet(IterCons* cons, void* ret);
 
 Tree* Tree_alloc();
 
@@ -175,7 +183,7 @@ Tree* Tree_fromArray(size_t size, void** items);
 
 bool Iter_empty(Iter* iter);
 
-Node* Iter_next(Iter* iter);
+void* Iter_next(Iter* iter);
 
 Iter* Iter_fromTree(Tree* tree);
 

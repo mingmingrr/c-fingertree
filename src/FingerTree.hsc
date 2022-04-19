@@ -286,3 +286,6 @@ foreign import ccall unsafe "libfingertree.h Iter_fromTree"
 foreign import ccall unsafe "libfingertree.h Tree_toArray"
   tree_toArray :: Ptr Tree -> IO (Ptr (Ptr ()))
 
+foreign import ccall unsafe "libfingertree.h Tree_extend"
+  tree_extend :: Ptr Tree -> Ptr Tree -> IO (Ptr Tree)
+

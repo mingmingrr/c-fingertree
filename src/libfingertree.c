@@ -100,6 +100,11 @@ void Node_decRef(Node* node) {
 	}
 }
 
+void* Node_decRefRet(Node* node, void* ret) {
+	Node_decRef(node);
+	return ret;
+}
+
 void Digit_decRef(Digit* digit) {
 	assert(digit != NULL);
 	--refCount;
@@ -114,6 +119,11 @@ void Digit_decRef(Digit* digit) {
 		}
 		free(digit);
 	}
+}
+
+void* Digit_decRefRet(Digit* digit, void* ret) {
+	Digit_decRef(digit);
+	return ret;
 }
 
 void Tree_decRef(Tree* tree) {
@@ -138,6 +148,11 @@ void Tree_decRef(Tree* tree) {
 	}
 }
 
+void* Tree_decRefRet(Tree* tree, void* ret) {
+	Tree_decRef(tree);
+	return ret;
+}
+
 void IterCons_decRef(IterCons* cons) {
 	switch(cons->type) {
 		case NodeI: Node_decRef(cons->node); break;
@@ -145,6 +160,11 @@ void IterCons_decRef(IterCons* cons) {
 		case DigitI: Digit_decRef(cons->digit); break;
 		default: assert(false);
 	}
+}
+
+void* IterCons_decRefRet(IterCons* cons, void* ret) {
+	IterCons_decRef(cons);
+	return ret;
 }
 
 // }}}
@@ -267,7 +287,7 @@ Digit* Digit_fromNode(Node* node) {
 Node* Node_make(size_t size, Node* n0, Node* n1, Node* n2) {
 	Node* node = Node_alloc();
 	node->size = size;
-	node->items[0] = n0; assert(n0 != NULL);
+	node->items[0] = n0; assert(node->size == 1 || n0 != NULL);
 	node->items[1] = n1; assert(n1 != NULL || size == 1);
 	node->items[2] = n2;
 	return node;
@@ -762,31 +782,28 @@ bool Iter_empty(Iter* iter) {
 	return iter->stack == NULL;
 }
 
-static void Iter_advance(Iter* iter) {
-}
-
-Node* Iter_next(Iter* iter) {
+static Iter* Iter_advance(Iter* iter) {
 	if(iter->stack == NULL) return NULL;
 	switch(iter->stack->type) {
 		case TreeI:
 			switch(iter->stack->tree->type) {
 				case EmptyT:
 					assert(iter->stack->index == 0);
-					return Iter_next(Iter_popStack(iter));
+					return Iter_advance(Iter_popStack(iter));
 				case SingleT:
 					assert(iter->stack->index == 0);
-					return Iter_next(Iter_replace(iter, NodeI,
+					return Iter_advance(Iter_replace(iter, NodeI,
 						iter->stack->tree->single));
 				case DeepT:
 					switch(iter->stack->index++) {
 						case 0:
-							return Iter_next(Iter_pushStack(iter, DigitI,
+							return Iter_advance(Iter_pushStack(iter, DigitI,
 								iter->stack->tree->deep->left));
 						case 1:
-							return Iter_next(Iter_pushStack(iter, TreeI,
+							return Iter_advance(Iter_pushStack(iter, TreeI,
 								iter->stack->tree->deep->middle));
 						case 2:
-							return Iter_next(Iter_replace(iter, DigitI,
+							return Iter_advance(Iter_replace(iter, DigitI,
 								iter->stack->tree->deep->right));
 						default: assert(false);
 					}
@@ -795,29 +812,40 @@ Node* Iter_next(Iter* iter) {
 		case DigitI:
 			assert(iter->stack->index <= 4);
 			if(iter->stack->index == iter->stack->digit->count)
-				return Iter_next(Iter_popStack(iter));
-			return Iter_next(Iter_pushStack(iter, NodeI,
+				return Iter_advance(Iter_popStack(iter));
+			return Iter_advance(Iter_pushStack(iter, NodeI,
 				iter->stack->digit->items[iter->stack->index++]));
 		case NodeI:
 			if(iter->stack->node->size == 1) {
 				assert(iter->stack->index == 0);
-				Node* node = iter->stack->node;
-				Iter_popStack(iter);
-				return node;
+				return iter;
 			}
 			assert(iter->stack->index <= 3);
 			if(iter->stack->index == Node_count(iter->stack->node))
-				return Iter_next(Iter_popStack(iter));
-			return Iter_next(Iter_pushStack(iter, NodeI,
+				return Iter_advance(Iter_popStack(iter));
+			return Iter_advance(Iter_pushStack(iter, NodeI,
 				iter->stack->node->items[iter->stack->index++]));
 		default: assert(false);
 	}
 }
 
+void* Iter_next(Iter* iter) {
+	assert(!Iter_empty(iter));
+	Node* node = iter->stack->node;
+	assert(node->size == 1);
+	Iter_popStack(iter);
+	Iter_advance(iter);
+	return node->value;
+}
+
 Iter* Iter_fromTree(Tree* tree) {
 	switch(tree->type) {
 		case EmptyT: return Iter_make(NULL);
-		default: return Iter_make(IterCons_make(TreeI, tree, NULL));
+		default: {
+			Iter* iter = Iter_make(IterCons_make(TreeI, tree, NULL));
+			Iter_advance(iter);
+			return iter;
+		}
 	}
 }
 
@@ -864,6 +892,58 @@ void** Tree_toArray(Tree* tree) {
 	void** end = Tree_toArrayItems(tree, items);
 	assert(items + size == end);
 	return items;
+}
+
+// }}}
+
+// {{{ extend
+
+Tree* Tree_extend(Tree* xs, Tree* ys) {
+	switch(xs->type) {
+		case EmptyT: return Tree_incRef(ys);
+		case SingleT: return Tree_appendLeftNode(ys, Node_incRef(xs->single));
+		case DeepT: switch(ys->type) {
+			case EmptyT: return Tree_incRef(xs);
+			case SingleT: return Tree_appendRightNode(xs, Node_incRef(ys->single));
+			case DeepT: {
+				Node* mid[8]; size_t count = 0;
+				for(; count < xs->deep->right->count; ++count)
+					mid[count] = xs->deep->right->items[count];
+				for(size_t i = 0; i < ys->deep->left->count; ++i, ++count)
+					mid[count] = ys->deep->left->items[i];
+				Tree_incRef(ys);
+				switch(count) {
+					case 8: ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+						Node_makeS(mid[5], mid[6], mid[7])));
+					case 5: ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+						Node_makeS(mid[2], mid[3], mid[4])));
+					case 2: ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+						Node_makeS(mid[0], mid[1], NULL)));
+					break;
+					case 6: ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+						Node_makeS(mid[3], mid[4], mid[5])));
+					case 3: ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+						Node_makeS(mid[0], mid[1], mid[2])));
+					break;
+					case 7: ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+						Node_makeS(mid[4], mid[5], mid[6])));
+					case 4:
+						ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+							Node_makeS(mid[2], mid[3], NULL)));
+						ys = Tree_decRefRet(ys, Tree_appendLeftNode(ys,
+							Node_makeS(mid[0], mid[1], NULL)));
+					break;
+					default: assert(false);
+				}
+				return Deep_make(xs->deep->size + ys->deep->size,
+					Digit_incRef(xs->deep->left),
+					Tree_extend(xs->deep->middle, ys->deep->middle),
+					Digit_incRef(ys->deep->right));
+			}
+			default: assert(false);
+		}
+		default: assert(false);
+	}
 }
 
 // }}}
