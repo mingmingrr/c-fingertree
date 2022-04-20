@@ -80,6 +80,12 @@ typedef struct View {
 	Tree* tree;
 } View;
 
+typedef struct Split {
+	Tree* left;
+	Node* node;
+	Tree* right;
+} Split;
+
 Tree* Tree_incRef(Tree* tree);
 
 Digit* Digit_incRef(Digit* digit);
@@ -190,5 +196,7 @@ Iter* Iter_fromTree(Tree* tree);
 void** Tree_toArray(Tree* tree);
 
 void* Tree_index(Tree* tree, size_t index);
+
+Tree* Tree_update(Tree* tree, size_t index, void* value);
 
 // vim: set foldmethod=marker foldlevel=0 :

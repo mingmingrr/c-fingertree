@@ -292,3 +292,6 @@ foreign import ccall unsafe "libfingertree.h Tree_extend"
 foreign import ccall unsafe "libfingertree.h Tree_index"
   tree_index :: Ptr Tree -> CSize -> IO (Ptr ())
 
+foreign import ccall unsafe "libfingertree.h Tree_update"
+  tree_update :: Ptr Tree -> CSize -> Ptr () -> IO (Ptr Tree)
+

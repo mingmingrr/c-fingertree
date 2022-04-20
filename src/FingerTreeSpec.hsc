@@ -173,54 +173,60 @@ checkView expect view = peek view >>= \View{..} -> case expect of
     assertEqual "view item" x (ptrToInt viewItem)
     equalTree xs viewTree
 
-checkingTree
-  :: Testable p
+checkingTree :: Testable p
   => (Seq.Seq Int -> Ptr Tree -> IO p)
   -> Seq.Seq (Positive Int) -> p
 checkingTree f xs = unsafePerformIO . checkRefs . withTree xs' $ f xs'
   where xs' = fmap getPositive xs
 
-checkingTree2
-  :: Testable p
+checkingTree2 :: Testable p
   => (Seq.Seq Int -> Ptr Tree -> Seq.Seq Int -> Ptr Tree -> IO p)
   -> Seq.Seq (Positive Int) -> Seq.Seq (Positive Int) -> p
 checkingTree2 f xs ys = unsafePerformIO . checkRefs
   . withTree xs' $ \xt -> withTree ys' $ \yt -> f xs' xt ys' yt
   where xs' = fmap getPositive xs ; ys' = fmap getPositive ys
 
+checkingIndex :: Testable p
+  => (Int -> Seq.Seq Int -> Ptr Tree -> IO p)
+  -> NonEmptyList (Positive Int) -> Property {- Int -> p -}
+checkingIndex f (NonEmpty xs) = forAll (choose (0, length xs - 1)) $
+  \n -> checkingTree (f n) (Seq.fromList xs)
+
 spec :: Spec
 spec = describe "FingerTree" $ do
+  -- specify "splitAt" $ do
   prop "toArray" $ checkingTree equalTree
-  prop "size" . checkingTree $ \xs tree ->
-    tree_size tree >>= assertEqual "tree_size" (length xs) . fromIntegral
-  prop "viewLeft" . checkingTree $ \xs tree ->
-    bracket (tree_viewLeft tree) freeView $ \view ->
+  prop "size" . checkingTree $ \xs ts ->
+    tree_size ts >>= assertEqual "tree_size" (length xs) . fromIntegral
+  prop "viewLeft" . checkingTree $ \xs ts ->
+    bracket (tree_viewLeft ts) freeView $ \view ->
       case Seq.viewl xs of
         Seq.EmptyL -> checkView Nothing view
         z Seq.:< zs -> checkView (Just (z, zs)) view
-  prop "viewLeft" . checkingTree $ \xs tree ->
-    bracket (tree_viewRight tree) freeView $ \view ->
+  prop "viewLeft" . checkingTree $ \xs ts ->
+    bracket (tree_viewRight ts) freeView $ \view ->
       case Seq.viewr xs of
         Seq.EmptyR -> checkView Nothing view
         zs Seq.:> z -> checkView (Just (z, zs)) view
-  prop "appendLeft" $ \(Positive x) -> checkingTree $ \xs tree ->
-    bracket (tree_appendLeft tree (intToPtr x)) tree_decRef $ \tree' ->
+  prop "appendLeft" $ \(Positive x) -> checkingTree $ \xs ts ->
+    bracket (tree_appendLeft ts (intToPtr x)) tree_decRef $ \tree' ->
       liftIO $ equalTree (x Seq.<| xs) tree'
-  prop "appendRight" $ \(Positive x) -> checkingTree $ \xs tree ->
-    bracket (tree_appendRight tree (intToPtr x)) tree_decRef $ \tree' ->
+  prop "appendRight" $ \(Positive x) -> checkingTree $ \xs ts ->
+    bracket (tree_appendRight ts (intToPtr x)) tree_decRef $ \tree' ->
       liftIO $ equalTree (xs Seq.|> x) tree'
-  prop "iter" . checkingTree $ \xs tree ->
-    bracket (iter_fromTree tree) free $ \iter -> do
+  prop "iter" . checkingTree $ \xs ts ->
+    bracket (iter_fromTree ts) free $ \iter -> do
       liftIO . forM_ (toList xs) $ \x -> do
         iter_empty iter >>= assertEqual "iter_empty" False
         iter_next iter >>= assertEqual "iter_next" x . ptrToInt
       liftIO $ iter_empty iter >>= assertEqual "iter_empty" True
   prop "extend" . checkingTree2 $ \xs tree1 ys tree2 ->
     bracket (tree_extend tree1 tree2) tree_decRef $ equalTree (xs <> ys)
-  prop "index" $ \(NonEmpty xs) -> forAll (choose (0, length xs - 1)) $ \n ->
-    flip checkingTree (Seq.fromList xs) $ \xs tree ->
-      tree_index tree (fromIntegral n) >>=
-        assertEqual "index" (xs `Seq.index` n) . ptrToInt
+  prop "index" . checkingIndex $ \n xs ts -> tree_index ts (fromIntegral n)
+    >>= assertEqual "index" (xs `Seq.index` n) . ptrToInt
+  prop "update" $ \(Positive v) -> checkingIndex $ \n xs ts -> do
+    let ts' = tree_update ts (fromIntegral n) (intToPtr v)
+     in bracket ts' tree_decRef $ equalTree (Seq.update n v xs)
 
 main :: IO ()
 main = HSpec.hspecWith HSpec.defaultConfig

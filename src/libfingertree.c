@@ -36,6 +36,7 @@ static Tree* Tree_fromDigit(Digit* digit) {
 	for(size_t i = 0; i < digit->count; ++i)
 		Node_incRef(digit->items[i]);
 	switch(digit->count) {
+		case 0: return Empty_make();
 		case 1: return Single_make(digit->items[0]);
 		case 2: return Deep_make(digit->size, Digit_makeNS(1, digit->items),
 			Empty_make(), Digit_makeNS(1, digit->items + 1));
@@ -70,6 +71,11 @@ Node* Node_incRef(Node* node) {
 	++node->refs;
 	++refCount;
 	return node;
+}
+
+static Node* Node_incRefM(Node* node) {
+	if(node == NULL) return NULL;
+	return Node_incRef(node);
 }
 
 IterCons* IterCons_incRef(IterCons* cons) {
@@ -280,7 +286,7 @@ Digit* Digit_fromNode(Node* node) {
 	return Digit_make(node->size, Node_count(node),
 		Node_incRef(node->items[0]),
 		Node_incRef(node->items[1]),
-		node->items[2] == NULL ? NULL : Node_incRef(node->items[2]),
+		Node_incRefM(node->items[2]),
 		NULL);
 }
 
@@ -486,9 +492,39 @@ size_t Tree_size(Tree* tree) {
 
 // }}}
 
+// {{{ pull
+
+static View Tree_viewLeftN(Tree* tree);
+
+Tree* Tree_pullLeft(size_t size, Tree* middle, Digit* right) {
+	View view = Tree_viewLeftN(middle);
+	if(view.tree == NULL)
+		return Tree_fromDigit(right);
+	Tree* tail = Deep_make(size,
+		Digit_fromNode(view.item), view.tree,
+		Digit_incRef(right));
+	Node_decRef(view.item);
+	return tail;
+}
+
+static View Tree_viewRightN(Tree* tree);
+
+Tree* Tree_pullRight(size_t size, Tree* middle, Digit* left) {
+	View view = Tree_viewRightN(middle);
+	if(view.tree == NULL)
+		return Tree_fromDigit(left);
+	Tree* init = Deep_make(size,
+		Digit_incRef(left), view.tree,
+		Digit_fromNode(view.item));
+	Node_decRef(view.item);
+	return init;
+}
+
+// }}}
+
 // {{{ appendLeft
 
-static Digit* Digit_appendLeftNode(Digit* digit, Node* node) {
+static Digit* Digit_appendLeftN(Digit* digit, Node* node) {
 	assert(digit->count < 4);
 	switch(digit->count) {
 		case 3: return Digit_make(digit->size + node->size, 4, node,
@@ -504,7 +540,7 @@ static Digit* Digit_appendLeftNode(Digit* digit, Node* node) {
 	}
 }
 
-Tree* Tree_appendLeftNode(Tree* tree, Node* node) {
+Tree* Tree_appendLeftN(Tree* tree, Node* node) {
 	switch(tree->type) {
 		case EmptyT:
 			return Single_make(node);
@@ -517,13 +553,13 @@ Tree* Tree_appendLeftNode(Tree* tree, Node* node) {
 		case DeepT:
 			if(tree->deep->left->count < 4)
 				return Deep_make(tree->deep->size + node->size,
-					Digit_appendLeftNode(tree->deep->left, node),
+					Digit_appendLeftN(tree->deep->left, node),
 					Tree_incRef(tree->deep->middle),
 					Digit_incRef(tree->deep->right));
 			return Deep_make(tree->deep->size + node->size,
 				Digit_make(tree->deep->left->items[0]->size + node->size, 2,
 					node, Node_incRef(tree->deep->left->items[0]), NULL, NULL),
-				Tree_appendLeftNode(tree->deep->middle, Node_make(
+				Tree_appendLeftN(tree->deep->middle, Node_make(
 					tree->deep->left->size - tree->deep->left->items[0]->size,
 					Node_incRef(tree->deep->left->items[1]),
 					Node_incRef(tree->deep->left->items[2]),
@@ -534,14 +570,14 @@ Tree* Tree_appendLeftNode(Tree* tree, Node* node) {
 }
 
 Tree* Tree_appendLeft(Tree* tree, void* item) {
-	return Tree_appendLeftNode(tree, Node_make1(item));
+	return Tree_appendLeftN(tree, Node_make1(item));
 }
 
 // }}}
 
 // {{{ appendRight
 
-static Digit* Digit_appendRightNode(Digit* digit, Node* node) {
+static Digit* Digit_appendRightN(Digit* digit, Node* node) {
 	assert(digit->count < 4);
 	switch(digit->count) {
 		case 3: return Digit_make(digit->size + node->size, 4,
@@ -560,7 +596,7 @@ static Digit* Digit_appendRightNode(Digit* digit, Node* node) {
 	}
 }
 
-static Tree* Tree_appendRightNode(Tree* tree, Node* node) {
+static Tree* Tree_appendRightN(Tree* tree, Node* node) {
 	switch(tree->type) {
 		case EmptyT:
 			return Single_make(node);
@@ -575,10 +611,10 @@ static Tree* Tree_appendRightNode(Tree* tree, Node* node) {
 				return Deep_make(tree->deep->size + node->size,
 					Digit_incRef(tree->deep->left),
 					Tree_incRef(tree->deep->middle),
-					Digit_appendRightNode(tree->deep->right, node));
+					Digit_appendRightN(tree->deep->right, node));
 			return Deep_make(tree->deep->size + node->size,
 				Digit_incRef(tree->deep->left),
-				Tree_appendRightNode(tree->deep->middle, Node_make(
+				Tree_appendRightN(tree->deep->middle, Node_make(
 					tree->deep->right->size - tree->deep->right->items[3]->size ,
 					Node_incRef(tree->deep->right->items[0]),
 					Node_incRef(tree->deep->right->items[1]),
@@ -591,14 +627,14 @@ static Tree* Tree_appendRightNode(Tree* tree, Node* node) {
 }
 
 Tree* Tree_appendRight(Tree* tree, void* item) {
-	return Tree_appendRightNode(tree, Node_make1(item));
+	return Tree_appendRightN(tree, Node_make1(item));
 }
 
 // }}}
 
 // {{{ viewLeft
 
-static View Tree_viewLeftNode(Tree* tree) {
+static View Tree_viewLeftN(Tree* tree) {
 	assert(tree != NULL);
 	switch(tree->type) {
 		case EmptyT: return (View){NULL, NULL};
@@ -606,23 +642,16 @@ static View Tree_viewLeftNode(Tree* tree) {
 		case DeepT: {
 			Digit* left = tree->deep->left;
 			Node* head = Node_incRef(left->items[0]);
-			if(left->count > 1) {
-				for(size_t i = 1; i < left->count; ++i)
-					Node_incRef(left->items[i]);
-				Tree* tail = Deep_make(tree->deep->size - head->size,
-					Digit_make(left->size - head->size, left->count - 1,
-						left->items[1], left->items[2], left->items[3], NULL),
-					Tree_incRef(tree->deep->middle),
-					Digit_incRef(tree->deep->right));
-				return (View){head, tail};
-			}
-			View view = Tree_viewLeftNode(tree->deep->middle);
-			if(view.tree == NULL)
-				return (View){head, Tree_fromDigit(tree->deep->right)};
+			if(left->count == 1) return (View){ head,
+				Tree_pullLeft(tree->deep->size - left->size,
+					tree->deep->middle, tree->deep->right) };
+			for(size_t i = 1; i < left->count; ++i)
+				Node_incRef(left->items[i]);
 			Tree* tail = Deep_make(tree->deep->size - head->size,
-				Digit_fromNode(view.item), view.tree,
+				Digit_make(left->size - head->size, left->count - 1,
+					left->items[1], left->items[2], left->items[3], NULL),
+				Tree_incRef(tree->deep->middle),
 				Digit_incRef(tree->deep->right));
-			Node_decRef(view.item);
 			return (View){head, tail};
 		}
 		default: assert(false);
@@ -630,7 +659,7 @@ static View Tree_viewLeftNode(Tree* tree) {
 }
 
 View Tree_viewLeft(Tree* tree) {
-	View view = Tree_viewLeftNode(tree);
+	View view = Tree_viewLeftN(tree);
 	if(view.tree != NULL) {
 		Node* node = view.item;
 		assert(node->size == 1);
@@ -650,7 +679,7 @@ View* Tree_viewLeftPtr(Tree* tree) {
 
 // {{{ viewRight
 
-static View Tree_viewRightNode(Tree* tree) {
+static View Tree_viewRightN(Tree* tree) {
 	assert(tree != NULL);
 	switch(tree->type) {
 		case EmptyT: return (View){NULL, NULL};
@@ -658,23 +687,16 @@ static View Tree_viewRightNode(Tree* tree) {
 		case DeepT: {
 			Digit* right = tree->deep->right;
 			Node* last = Node_incRef(right->items[right->count-1]);
-			if(right->count > 1) {
-				for(size_t i = 0; i < right->count - 1; ++i)
-					Node_incRef(right->items[i]);
-				Tree* init = Deep_make(tree->deep->size - last->size,
-					Digit_incRef(tree->deep->left),
-					Tree_incRef(tree->deep->middle),
-					Digit_makeN(right->size - last->size,
-						right->count - 1, right->items));
-				return (View){last, init};
-			}
-			View view = Tree_viewRightNode(tree->deep->middle);
-			if(view.tree == NULL)
-				return (View){last, Tree_fromDigit(tree->deep->left)};
+			if(right->count == 1) return (View){ last,
+				Tree_pullRight(tree->deep->size - right->size,
+					tree->deep->middle, tree->deep->left) };
+			for(size_t i = 0; i < right->count - 1; ++i)
+				Node_incRef(right->items[i]);
 			Tree* init = Deep_make(tree->deep->size - last->size,
 				Digit_incRef(tree->deep->left),
-				view.tree, Digit_fromNode(view.item));
-			Node_decRef(view.item);
+				Tree_incRef(tree->deep->middle),
+				Digit_makeN(right->size - last->size,
+					right->count - 1, right->items));
 			return (View){last, init};
 		}
 		default: assert(false);
@@ -682,7 +704,7 @@ static View Tree_viewRightNode(Tree* tree) {
 }
 
 View Tree_viewRight(Tree* tree) {
-	View view = Tree_viewRightNode(tree);
+	View view = Tree_viewRightN(tree);
 	if(view.tree != NULL) {
 		Node* node = view.item;
 		assert(node->size == 1);
@@ -901,10 +923,10 @@ void** Tree_toArray(Tree* tree) {
 Tree* Tree_extend(Tree* xs, Tree* ys) {
 	switch(xs->type) {
 		case EmptyT: return Tree_incRef(ys);
-		case SingleT: return Tree_appendLeftNode(ys, Node_incRef(xs->single));
+		case SingleT: return Tree_appendLeftN(ys, Node_incRef(xs->single));
 		case DeepT: switch(ys->type) {
 			case EmptyT: return Tree_incRef(xs);
-			case SingleT: return Tree_appendRightNode(xs, Node_incRef(ys->single));
+			case SingleT: return Tree_appendRightN(xs, Node_incRef(ys->single));
 			case DeepT: {
 				size_t size = xs->deep->size + ys->deep->size;
 				Node* mid[8]; size_t count = 0;
@@ -914,24 +936,24 @@ Tree* Tree_extend(Tree* xs, Tree* ys) {
 					mid[count] = Node_incRef(ys->deep->left->items[i]);
 				Tree* right = Tree_incRef(ys->deep->middle);
 				switch(count) {
-					case 8: right = Tree_decRefRet(right, Tree_appendLeftNode(right,
+					case 8: right = Tree_decRefRet(right, Tree_appendLeftN(right,
 						Node_makeS(mid[5], mid[6], mid[7])));
-					case 5: right = Tree_decRefRet(right, Tree_appendLeftNode(right,
+					case 5: right = Tree_decRefRet(right, Tree_appendLeftN(right,
 						Node_makeS(mid[2], mid[3], mid[4])));
-					case 2: right = Tree_decRefRet(right, Tree_appendLeftNode(right,
+					case 2: right = Tree_decRefRet(right, Tree_appendLeftN(right,
 						Node_makeS(mid[0], mid[1], NULL)));
 					break;
-					case 6: right = Tree_decRefRet(right, Tree_appendLeftNode(right,
+					case 6: right = Tree_decRefRet(right, Tree_appendLeftN(right,
 						Node_makeS(mid[3], mid[4], mid[5])));
-					case 3: right = Tree_decRefRet(right, Tree_appendLeftNode(right,
+					case 3: right = Tree_decRefRet(right, Tree_appendLeftN(right,
 						Node_makeS(mid[0], mid[1], mid[2])));
 					break;
-					case 7: right = Tree_decRefRet(right, Tree_appendLeftNode(right,
+					case 7: right = Tree_decRefRet(right, Tree_appendLeftN(right,
 						Node_makeS(mid[4], mid[5], mid[6])));
 					case 4:
-						right = Tree_decRefRet(right, Tree_appendLeftNode(right,
+						right = Tree_decRefRet(right, Tree_appendLeftN(right,
 							Node_makeS(mid[2], mid[3], NULL)));
-						right = Tree_decRefRet(right, Tree_appendLeftNode(right,
+						right = Tree_decRefRet(right, Tree_appendLeftN(right,
 							Node_makeS(mid[0], mid[1], NULL)));
 					break;
 					default: assert(false);
@@ -959,7 +981,7 @@ static void* Node_index(Node* node, size_t index) {
 	if(index < node->items[0]->size)
 		return Node_index(node->items[0], index);
 	index -= node->items[0]->size;
-	if(index < node->items[0]->size)
+	if(index < node->items[1]->size)
 		return Node_index(node->items[1], index);
 	index -= node->items[1]->size;
 	return Node_index(node->items[2], index);
@@ -979,7 +1001,7 @@ void* Tree_index(Tree* tree, size_t index) {
 	assert(index < Tree_size(tree));
 	switch(tree->type) {
 		case SingleT: return Node_index(tree->single, index);
-		case DeepT: {
+		case DeepT:
 			if(index < tree->deep->left->size)
 				return Digit_index(tree->deep->left, index);
 			index -= tree->deep->left->size;
@@ -987,7 +1009,75 @@ void* Tree_index(Tree* tree, size_t index) {
 				return Tree_index(tree->deep->middle, index);
 			index -= Tree_size(tree->deep->middle);
 			return Digit_index(tree->deep->right, index);
+		default: assert(false);
+	}
+}
+
+// }}}
+
+// {{{ update
+
+static Node* Node_update(Node* node, size_t index, void* value) {
+	assert(index < node->size);
+	if(node->size == 1)
+		return Node_make1(value);
+	if(index < node->items[0]->size)
+		return Node_make(node->size,
+			Node_update(node->items[0], index, value),
+			Node_incRef(node->items[1]),
+			Node_incRefM(node->items[2]));
+	index -= node->items[0]->size;
+	if(index < node->items[1]->size)
+		return Node_make(node->size,
+			Node_incRef(node->items[0]),
+			Node_update(node->items[1], index, value),
+			Node_incRefM(node->items[2]));
+	index -= node->items[1]->size;
+	return Node_make(node->size,
+		Node_incRef(node->items[0]),
+		Node_incRefM(node->items[1]),
+		Node_update(node->items[2], index, value));
+}
+
+static Digit* Digit_update(Digit* digit, size_t index, void* value) {
+	assert(index < digit->size);
+	Node* items[4] = {NULL, NULL, NULL, NULL};
+	for(size_t i = 0; i < digit->count; ++i)
+		if(index < digit->items[i]->size) {
+			items[i] = Node_update(digit->items[i], index, value);
+			for(size_t j = i + 1; j < digit->count; ++j)
+				items[j] = Node_incRef(digit->items[j]);
+			return Digit_make(digit->size, digit->count,
+				items[0], items[1], items[2], items[3]);
+		} else {
+			items[i] = Node_incRef(digit->items[i]);
+			index -= digit->items[i]->size;
 		}
+	assert(false);
+}
+
+Tree* Tree_update(Tree* tree, size_t index, void* value) {
+	assert(index < Tree_size(tree));
+	switch(tree->type) {
+		case EmptyT: return Empty_make();
+		case SingleT: return Single_make(Node_update(tree->single, index, value));
+		case DeepT:
+			if(index < tree->deep->left->size)
+				return Deep_make(tree->deep->size,
+					Digit_update(tree->deep->left, index, value),
+					Tree_incRef(tree->deep->middle),
+					Digit_incRef(tree->deep->right));
+			index -= tree->deep->left->size;
+			if(index < Tree_size(tree->deep->middle))
+				return Deep_make(tree->deep->size,
+					Digit_incRef(tree->deep->left),
+					Tree_update(tree->deep->middle, index, value),
+					Digit_incRef(tree->deep->right));
+			index -= Tree_size(tree->deep->middle);
+			return Deep_make(tree->deep->size,
+				Digit_incRef(tree->deep->left),
+				Tree_incRef(tree->deep->middle),
+				Digit_update(tree->deep->right, index, value));
 		default: assert(false);
 	}
 }
