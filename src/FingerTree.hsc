@@ -154,6 +154,25 @@ instance Storable View where
     #{poke View, item} ptr viewItem
     #{poke View, tree} ptr viewTree
 
+data Split = Split
+  { splitLeft :: Ptr Tree
+  , splitItem :: Ptr ()
+  , splitRight :: Ptr Tree
+  }
+
+instance Storable Split where
+  sizeOf _ = #{size Split}
+  alignment _ = #{alignment Split}
+  peek ptr = do
+    splitLeft  <- #{peek Split, left}  ptr
+    splitItem  <- #{peek Split, item}  ptr
+    splitRight <- #{peek Split, right} ptr
+    return Split{..}
+  poke ptr Split{..} = do
+    #{poke Split, left}  ptr splitLeft
+    #{poke Split, node}  ptr splitItem
+    #{poke Split, right} ptr splitRight
+
 foreign import ccall unsafe "libfingertree.h refCountGet"
   refCount :: IO CLong
 
@@ -294,4 +313,7 @@ foreign import ccall unsafe "libfingertree.h Tree_index"
 
 foreign import ccall unsafe "libfingertree.h Tree_update"
   tree_update :: Ptr Tree -> CSize -> Ptr () -> IO (Ptr Tree)
+
+foreign import ccall unsafe "libfingertree.h Tree_splitAtPtr"
+  tree_splitAt :: Ptr Tree -> CSize -> IO (Ptr Split)
 

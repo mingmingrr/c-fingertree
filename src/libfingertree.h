@@ -82,7 +82,10 @@ typedef struct View {
 
 typedef struct Split {
 	Tree* left;
-	Node* node;
+	union {
+		void* item;
+		Node* node;
+	};
 	Tree* right;
 } Split;
 
@@ -127,6 +130,8 @@ Tree* Empty_make();
 Tree* Single_make(Node* node);
 
 Tree* Deep_make(size_t size, Digit* left, Tree* middle, Digit* right);
+
+Tree* Deep_makeS(Digit* left, Tree* middle, Digit* right);
 
 Digit* Digit_make(
 	size_t size, size_t count,
@@ -198,5 +203,9 @@ void** Tree_toArray(Tree* tree);
 void* Tree_index(Tree* tree, size_t index);
 
 Tree* Tree_update(Tree* tree, size_t index, void* value);
+
+Split Tree_splitAt(Tree* tree, size_t index);
+
+Split* Tree_splitAtPtr(Tree* tree, size_t index);
 
 // vim: set foldmethod=marker foldlevel=0 :

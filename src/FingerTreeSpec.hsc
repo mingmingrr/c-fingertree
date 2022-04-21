@@ -159,6 +159,14 @@ freeView ptr = do
     tree_decRef viewTree
     free ptr
 
+freeSplit :: Ptr Split -> IO ()
+freeSplit ptr = do
+  Split{..} <- peek ptr
+  tree_decRef splitLeft
+  -- node_decRef splitNode
+  tree_decRef splitRight
+  free ptr
+
 -- }}}
 
 -- {{{ check
@@ -239,6 +247,12 @@ spec = describe "FingerTree" $ do
   prop "update" $ \v -> checkingIndex $ \n xs ts -> do
     let ts' = tree_update ts (fromIntegral n) (intToPtr v)
      in bracket ts' tree_decRef $ equalTree (S.update n v xs)
+  prop "splitAt" . checkingIndex $ \n xs ts ->
+    bracket (tree_splitAt ts (fromIntegral n)) freeSplit $ \split -> do
+      let (ls, v S.:<| rs) = S.splitAt n xs
+      Split{..} <- peek split
+      assertEqual "value" v (ptrToInt splitItem)
+      equalTree ls splitLeft >> equalTree rs splitRight
 
 main :: IO ()
 main = HSpec.hspecWith HSpec.defaultConfig

@@ -240,6 +240,12 @@ Tree* Deep_make(size_t size, Digit* left, Tree* middle, Digit* right) {
 	return tree;
 }
 
+Tree* Deep_makeS(Digit* left, Tree* middle, Digit* right) {
+	size_t size = left->size + Tree_size(middle) + right->size;
+	return Deep_make(size, left, middle, right);
+}
+
+
 Digit* Digit_make(
 	size_t size, size_t count,
 	Node* n0, Node* n1, Node* n2, Node* n3
@@ -496,11 +502,11 @@ size_t Tree_size(Tree* tree) {
 
 static View Tree_viewLeftN(Tree* tree);
 
-Tree* Tree_pullLeft(size_t size, Tree* middle, Digit* right) {
+Tree* Tree_pullLeft(Tree* middle, Digit* right) {
 	View view = Tree_viewLeftN(middle);
 	if(view.tree == NULL)
 		return Tree_fromDigit(right);
-	Tree* tail = Deep_make(size,
+	Tree* tail = Deep_make(Tree_size(middle) + right->size,
 		Digit_fromNode(view.item), view.tree,
 		Digit_incRef(right));
 	Node_decRef(view.item);
@@ -509,11 +515,11 @@ Tree* Tree_pullLeft(size_t size, Tree* middle, Digit* right) {
 
 static View Tree_viewRightN(Tree* tree);
 
-Tree* Tree_pullRight(size_t size, Tree* middle, Digit* left) {
+Tree* Tree_pullRight(Tree* middle, Digit* left) {
 	View view = Tree_viewRightN(middle);
 	if(view.tree == NULL)
 		return Tree_fromDigit(left);
-	Tree* init = Deep_make(size,
+	Tree* init = Deep_make(Tree_size(middle) + left->size,
 		Digit_incRef(left), view.tree,
 		Digit_fromNode(view.item));
 	Node_decRef(view.item);
@@ -643,8 +649,7 @@ static View Tree_viewLeftN(Tree* tree) {
 			Digit* left = tree->deep->left;
 			Node* head = Node_incRef(left->items[0]);
 			if(left->count == 1) return (View){ head,
-				Tree_pullLeft(tree->deep->size - left->size,
-					tree->deep->middle, tree->deep->right) };
+				Tree_pullLeft(tree->deep->middle, tree->deep->right) };
 			for(size_t i = 1; i < left->count; ++i)
 				Node_incRef(left->items[i]);
 			Tree* tail = Deep_make(tree->deep->size - head->size,
@@ -688,8 +693,7 @@ static View Tree_viewRightN(Tree* tree) {
 			Digit* right = tree->deep->right;
 			Node* last = Node_incRef(right->items[right->count-1]);
 			if(right->count == 1) return (View){ last,
-				Tree_pullRight(tree->deep->size - right->size,
-					tree->deep->middle, tree->deep->left) };
+				Tree_pullRight(tree->deep->middle, tree->deep->left) };
 			for(size_t i = 0; i < right->count - 1; ++i)
 				Node_incRef(right->items[i]);
 			Tree* init = Deep_make(tree->deep->size - last->size,
@@ -1080,6 +1084,155 @@ Tree* Tree_update(Tree* tree, size_t index, void* value) {
 				Digit_update(tree->deep->right, index, value));
 		default: assert(false);
 	}
+}
+
+// }}}
+
+// {{{ splitAt
+
+static Split Tree_splitAtN(Tree* tree, size_t index);
+
+static Split Deep_splitLeftN(Deep* deep, size_t index) {
+	size_t size, dsize = 0;
+	Node* prefix[4] = { NULL, NULL, NULL, NULL };
+	for(size_t i = 0; i < deep->left->count; ++i)
+		if(index >= (size = deep->left->items[i]->size)) {
+			prefix[i] = Node_incRef(deep->left->items[i]);
+			index -= size; dsize += size;
+		} else if(i + 1 == deep->left->count) {
+			return (Split){
+				Tree_fromNodes(dsize, i, prefix),
+				Node_incRef(deep->left->items[i]),
+				Tree_pullLeft(deep->middle, deep->right) };
+		} else {
+			Node* suffix[4] = { NULL, NULL, NULL, NULL };
+			for(size_t j = i + 1, k = 0; j < deep->left->count; ++j, ++k)
+				suffix[k] = Node_incRef(deep->left->items[j]);
+			return (Split){
+				Tree_fromNodes(dsize, i, prefix),
+				Node_incRef(deep->left->items[i]),
+				Deep_make(deep->size - dsize - size,
+					Digit_makeN(deep->left->size - dsize - size,
+						deep->left->count - i - 1, suffix),
+					Tree_incRef(deep->middle),
+					Digit_incRef(deep->right)) };
+		}
+}
+
+static Split Deep_splitRightN(Deep* deep, size_t index) {
+	size_t size, dsize = 0;
+	Node* prefix[4] = { NULL, NULL, NULL, NULL };
+	for(size_t i = 0; i < deep->right->count; ++i)
+		if(index >= (size = deep->right->items[i]->size)) {
+			prefix[i] = Node_incRef(deep->right->items[i]);
+			index -= size; dsize += size;
+		} else if(i == 0) {
+			for(size_t j = 1; j < deep->right->count; ++j)
+				prefix[j-1] = Node_incRef(deep->right->items[j]);
+			return (Split){
+				Tree_pullRight(deep->middle, deep->left),
+				Node_incRef(deep->right->items[0]),
+				Tree_fromNodes(deep->right->size - size,
+					deep->right->count - 1, prefix) };
+		} else {
+			Node* suffix[4] = { NULL, NULL, NULL, NULL };
+			for(size_t j = i + 1, k = 0; j < deep->right->count; ++j, ++k)
+				suffix[k] = Node_incRef(deep->right->items[j]);
+			return (Split){
+				Deep_make(deep->size - deep->right->size + dsize,
+					Digit_incRef(deep->left),
+					Tree_incRef(deep->middle),
+					Digit_makeN(dsize, i, prefix)),
+				Node_incRef(deep->right->items[i]),
+				Tree_fromNodes(deep->size - dsize - size,
+					deep->right->count - i - 1, suffix) };
+		}
+}
+
+static Split Deep_splitMiddleN(Deep* deep, size_t index) {
+	Split split = Tree_splitAtN(deep->middle, index);
+	if(split.node->size == 1) {
+		Tree* left = Tree_decRefRet(split.left,
+			Tree_pullRight(split.left, deep->left));
+		Tree* right = Tree_decRefRet(split.right,
+			Tree_pullRight(split.right, deep->right));
+		return (Split){ left, split.node, right };
+	}
+	index -= Tree_size(split.left);
+	size_t size, presize = 0;
+	if(index < (size = split.node->items[0]->size)) {
+		Tree* left = Tree_decRefRet(split.left,
+			Tree_pullRight(split.left, deep->left));
+		Node* middle = Node_incRef(split.node->items[0]);
+		Tree* right = Deep_makeS(
+			Digit_make(split.node->size - size,
+				Node_count(split.node) - 1,
+				Node_incRef(split.node->items[1]),
+				Node_incRefM(split.node->items[2]), NULL, NULL),
+			split.right, Digit_incRef(deep->right));
+		Node_decRef(split.node);
+		return (Split){ left, middle, right };
+	}
+	index -= size; presize += size;
+	if(index < (size = split.node->items[1]->size)) {
+		Tree* left = Deep_makeS(
+			Digit_incRef(deep->left), split.left,
+			Digit_make(split.node->items[0]->size, 1,
+				Node_incRef(split.node->items[0]), NULL, NULL, NULL));
+		Node* middle = Node_incRef(split.node->items[1]);
+		Tree* right = split.node->items[2] == NULL
+			? Tree_decRefRet(split.right,
+				Tree_pullLeft(split.right, deep->right))
+			: Deep_makeS(Digit_make(split.node->items[2]->size, 1,
+					Node_incRefM(split.node->items[2]), NULL, NULL, NULL),
+				split.right, Digit_incRef(deep->right));
+		Node_decRef(split.node);
+		return (Split){ left, middle, right };
+	}
+	index -= size; presize += size;
+	assert(split.node->items[2] != NULL); {
+		size = split.node->items[2]->size;
+		Tree* left = Deep_makeS(
+			Digit_incRef(deep->left), split.left,
+			Digit_make(split.node->size - size, 2,
+				Node_incRef(split.node->items[0]),
+				Node_incRef(split.node->items[1]), NULL, NULL));
+		Node* middle = Node_incRef(split.node->items[2]);
+		Tree* right = Tree_decRefRet(split.right,
+			Tree_pullLeft(split.right, deep->right));
+		Node_decRef(split.node);
+		return (Split){ left, middle, right };
+	}
+}
+
+static Split Tree_splitAtN(Tree* tree, size_t index) {
+	assert(index < Tree_size(tree));
+	switch(tree->type) {
+		case SingleT: return (Split){ Empty_make(),
+			Node_incRef(tree->single), Empty_make() };
+		case DeepT:
+			if(index < tree->deep->left->size)
+				return Deep_splitLeftN(tree->deep, index);
+			index -= tree->deep->left->size;
+			if(index < Tree_size(tree->deep->middle))
+				return Deep_splitMiddleN(tree->deep, index);
+			index -= Tree_size(tree->deep->middle);
+			return Deep_splitRightN(tree->deep, index);
+		default: assert(false);
+	}
+}
+
+Split Tree_splitAt(Tree* tree, size_t index) {
+	Split split = Tree_splitAtN(tree, index);
+	assert(split.node->size == 1);
+	split.item = Node_decRefRet(split.node, split.node->items[0]);
+	return split;
+}
+
+Split* Tree_splitAtPtr(Tree* tree, size_t index) {
+	Split* split = malloc(sizeof(Split));
+	*split = Tree_splitAt(tree, index);
+	return split;
 }
 
 // }}}
