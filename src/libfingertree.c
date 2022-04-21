@@ -1247,4 +1247,56 @@ Split* Tree_splitAtPtr(Tree* tree, size_t index) {
 
 // }}}
 
+// {{{ replicate
+
+static Digit* Digit_replicateN(size_t count, Node* node) {
+	switch(count) {
+		case 1: return Digit_make(node->size, 1,
+			Node_incRef(node), NULL, NULL, NULL);
+		case 2: return Digit_make(2 * node->size, 2,
+			Node_incRef(node), Node_incRef(node), NULL, NULL);
+		case 3: return Digit_make(3 * node->size, 3,
+			Node_incRef(node), Node_incRef(node), Node_incRef(node), NULL);
+		case 4: return Digit_make(4 * node->size, 4,
+			Node_incRef(node), Node_incRef(node),
+			Node_incRef(node), Node_incRef(node));
+		default: assert(false);
+	}
+}
+
+static Tree* Tree_replicateN(size_t count, Node* node) {
+	if(count == 0) return Empty_make();
+	if(count == 1) return Single_make(Node_incRef(node));
+	if(count <= 8) return Deep_make(count * node->size,
+		Digit_replicateN(count >> 1, node), Empty_make(),
+		Digit_replicateN(count - (count >> 1), node));
+	Digit *left, *right;
+	size_t countN = count / 3 - 1;
+	switch(count % 3) {
+		case 0:
+			--countN;
+			left = right = Digit_incRef(Digit_replicateN(3, node));
+			break;
+		case 1:
+			left = right = Digit_incRef(Digit_replicateN(2, node));
+			break;
+		case 2:
+			left = Digit_replicateN(3, node);
+			right = Digit_replicateN(2, node);
+			break;
+		default: assert(false);
+	}
+	Node* nodeN = Node_make(3 * node->size,
+		Node_incRef(node), Node_incRef(node), Node_incRef(node));
+	return Node_decRefRet(nodeN, Deep_make(count * node->size,
+		left, Tree_replicateN(countN, nodeN), right));
+}
+
+Tree* Tree_replicate(size_t count, void* item) {
+	Node* node = Node_make1(item);
+	return Node_decRefRet(node, Tree_replicateN(count, node));
+}
+
+// }}}
+
 // vim: set foldmethod=marker foldlevel=0 :

@@ -222,4 +222,6 @@ Split Tree_splitAt(Tree* tree, size_t index);
 
 Split* Tree_splitAtPtr(Tree* tree, size_t index);
 
+Tree* Tree_replicate(size_t count, void* item);
+
 // vim: set foldmethod=marker foldlevel=0 :

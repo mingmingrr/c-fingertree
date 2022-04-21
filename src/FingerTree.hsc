@@ -326,3 +326,6 @@ foreign import ccall unsafe "libfingertree.h Tree_update"
 foreign import ccall unsafe "libfingertree.h Tree_splitAtPtr"
   tree_splitAt :: Ptr Tree -> CSize -> IO (Ptr Split)
 
+foreign import ccall unsafe "libfingertree.h Tree_replicate"
+  tree_replicate :: CSize -> Ptr () -> IO (Ptr Tree)
+

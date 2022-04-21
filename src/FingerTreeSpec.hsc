@@ -253,6 +253,9 @@ spec = describe "FingerTree" $ do
       Split{..} <- peek split
       assertEqual "value" v (ptrToInt splitItem)
       equalTree ls splitLeft >> equalTree rs splitRight
+  prop "replicate" $ \(Positive n) x -> ioProperty . checkRefs $
+    bracket (tree_replicate (fromIntegral n) (intToPtr x)) tree_decRef $
+      equalTree (S.replicate n x)
 
 main :: IO ()
 main = HSpec.hspecWith HSpec.defaultConfig
