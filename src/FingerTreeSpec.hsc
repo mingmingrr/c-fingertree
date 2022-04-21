@@ -6,6 +6,7 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 #include "libfingertree.h"
 
@@ -133,6 +134,8 @@ instance Valid a => Valid (S.Digit a) where
 
 -- }}}
 
+-- {{{ utils
+
 withTree :: S.Seq Int -> (Ptr Tree -> IO a) -> IO a
 withTree (S.Seq tree) = bracket (toTarget tree) tree_decRef
 
@@ -156,6 +159,10 @@ freeView ptr = do
     tree_decRef viewTree
     free ptr
 
+-- }}}
+
+-- {{{ check
+
 checkRefs :: IO a -> IO a
 checkRefs m = do
   x <- refCount
@@ -175,28 +182,31 @@ checkView expect view = peek view >>= \View{..} -> case expect of
 
 checkingTree :: Testable p
   => (S.Seq Int -> Ptr Tree -> IO p)
-  -> S.Seq (Positive Int) -> p
-checkingTree f xs = unsafePerformIO . checkRefs . withTree xs' $ f xs'
-  where xs' = fmap getPositive xs
+  -> S.Seq Int -> p
+checkingTree f xs = unsafePerformIO . checkRefs . withTree xs $ f xs
 
 checkingTree2 :: Testable p
   => (S.Seq Int -> Ptr Tree -> S.Seq Int -> Ptr Tree -> IO p)
-  -> S.Seq (Positive Int) -> S.Seq (Positive Int) -> p
+  -> S.Seq (Int) -> S.Seq (Int) -> p
 checkingTree2 f xs ys = unsafePerformIO . checkRefs
-  . withTree xs' $ \xt -> withTree ys' $ \yt -> f xs' xt ys' yt
-  where xs' = fmap getPositive xs ; ys' = fmap getPositive ys
+  . withTree xs $ \xt -> withTree ys $ \yt -> f xs xt ys yt
 
 checkingIndex :: Testable p
   => (Int -> S.Seq Int -> Ptr Tree -> IO p)
-  -> NonEmptyList (Positive Int) -> Property {- Int -> p -}
+  -> NonEmptyList Int -> Property {- Int -> p -}
 checkingIndex f (NonEmpty xs) = forAll (choose (0, length xs - 1)) $
   \n -> checkingTree (f n) (S.fromList xs)
 
+-- }}}
+
+instance Show a => Show (S.Elem a) where
+  showsPrec p (S.Elem x) = showsPrec p x
+deriving instance Show a => Show (S.Node a)
+deriving instance Show a => Show (S.Digit a)
+deriving instance Show a => Show (S.FingerTree a)
+
 spec :: Spec
 spec = describe "FingerTree" $ do
-  -- specify "splitAt" $ do
-    -- let S.Seq xs = S.fromList [(1::Int)..8]
-    -- print xs
   prop "toArray" $ checkingTree equalTree
   prop "size" . checkingTree $ \xs ts ->
     tree_size ts >>= assertEqual "tree_size" (length xs) . fromIntegral
@@ -210,10 +220,10 @@ spec = describe "FingerTree" $ do
       case S.viewr xs of
         S.EmptyR -> checkView Nothing view
         zs S.:> z -> checkView (Just (z, zs)) view
-  prop "appendLeft" $ \(Positive x) -> checkingTree $ \xs ts ->
+  prop "appendLeft" $ \x -> checkingTree $ \xs ts ->
     bracket (tree_appendLeft ts (intToPtr x)) tree_decRef $ \tree' ->
       liftIO $ equalTree (x S.<| xs) tree'
-  prop "appendRight" $ \(Positive x) -> checkingTree $ \xs ts ->
+  prop "appendRight" $ \x -> checkingTree $ \xs ts ->
     bracket (tree_appendRight ts (intToPtr x)) tree_decRef $ \tree' ->
       liftIO $ equalTree (xs S.|> x) tree'
   prop "iter" . checkingTree $ \xs ts ->
@@ -226,7 +236,7 @@ spec = describe "FingerTree" $ do
     bracket (tree_extend tree1 tree2) tree_decRef $ equalTree (xs <> ys)
   prop "index" . checkingIndex $ \n xs ts -> tree_index ts (fromIntegral n)
     >>= assertEqual "index" (xs `S.index` n) . ptrToInt
-  prop "update" $ \(Positive v) -> checkingIndex $ \n xs ts -> do
+  prop "update" $ \v -> checkingIndex $ \n xs ts -> do
     let ts' = tree_update ts (fromIntegral n) (intToPtr v)
      in bracket ts' tree_decRef $ equalTree (S.update n v xs)
 
