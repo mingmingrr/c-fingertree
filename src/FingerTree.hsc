@@ -14,6 +14,15 @@ import Foreign
 import Foreign.C
 import Foreign.C.Types
 
+data RefType = TreeR | NodeR | DigitR
+  deriving (Eq, Show, Enum, Bounded)
+
+instance Storable RefType where
+  sizeOf _ = sizeOf (undefined :: CInt)
+  alignment _ = alignment (undefined :: CInt)
+  peek ptr = toEnum . fromIntegral <$> peek (castPtr ptr :: Ptr CInt)
+  poke ptr val = poke (castPtr ptr :: Ptr CInt) (fromIntegral (fromEnum val))
+
 data Node = Node
   { nodeRefs :: CSize
   , nodeSize :: CSize
@@ -174,7 +183,7 @@ instance Storable Split where
     #{poke Split, right} ptr splitRight
 
 foreign import ccall unsafe "libfingertree.h refCountGet"
-  refCount :: IO CLong
+  refCount :: CInt -> IO CLong
 
 foreign import ccall unsafe "libfingertree.h Tree_incRef"
   tree_incRef :: Ptr Tree -> IO (Ptr Tree)

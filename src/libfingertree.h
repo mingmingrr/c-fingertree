@@ -7,11 +7,21 @@
 #include <stdbool.h>
 #include <memory.h>
 
+#ifndef NDEBUG
+
 void showInt(FILE* file, void* num);
 
-extern long refCount;
+typedef enum RefType {
+	TreeR = 0,
+	NodeR = 1,
+	DigitR = 2
+} RefType;
 
-long refCountGet();
+extern long refCounts[3];
+
+long refCountGet(RefType type);
+
+#endif
 
 typedef struct Node {
 	size_t refs;
@@ -158,6 +168,8 @@ Iter* Iter_replace(Iter* iter, IterType type, void* item);
 
 Iter* Iter_make(IterCons* stack);
 
+#ifndef NDEBUG
+
 void Digit_fprint(FILE*, Digit*, int indent, void(*show)(FILE*,void*));
 
 void Digit_print(Digit*);
@@ -173,6 +185,8 @@ void Tree_print(Tree*);
 void Iter_fprint(FILE*, Iter*, int indent, bool showNode, void(*show)(FILE*,void*));
 
 void Iter_print(Iter*, bool showNode);
+
+#endif
 
 bool Tree_empty(Tree* tree);
 

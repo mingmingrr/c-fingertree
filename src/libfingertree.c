@@ -8,13 +8,21 @@
 #include <assert.h>
 #include <memory.h>
 
+#ifndef NDEBUG
 void showInt(FILE* file, void* num) {
 	fprintf(file, "%zu", (size_t)num);
 }
+#endif
 
-long refCount = 0;
-
-long refCountGet() { return refCount; }
+#ifndef NDEBUG
+long refCounts[3] = { 0, 0, 0 };
+long refCountGet(RefType type) { return refCounts[type]; }
+#define refCountInc(type) ++refCounts[type]
+#define refCountDec(type) --refCounts[type]
+#else
+#define refCountInc(type)
+#define refCountDec(type)
+#endif
 
 // {{{ misc
 
@@ -55,21 +63,21 @@ static Tree* Tree_fromDigit(Digit* digit) {
 Tree* Tree_incRef(Tree* tree) {
 	assert(tree != NULL);
 	++tree->refs;
-	++refCount;
+	refCountInc(TreeR);
 	return tree;
 }
 
 Digit* Digit_incRef(Digit* digit) {
 	assert(digit != NULL);
 	++digit->refs;
-	++refCount;
+	refCountInc(DigitR);
 	return digit;
 }
 
 Node* Node_incRef(Node* node) {
 	if(node == NULL) return NULL;
 	++node->refs;
-	++refCount;
+	refCountInc(NodeR);
 	return node;
 }
 
@@ -94,7 +102,7 @@ IterCons* IterCons_incRef(IterCons* cons) {
 
 void Node_decRef(Node* node) {
 	assert(node != NULL);
-	--refCount;
+	refCountDec(NodeR);
 	if(--node->refs == 0) {
 		if(node->size > 1) {
 			Node_decRef(node->items[0]);
@@ -113,7 +121,7 @@ void* Node_decRefRet(Node* node, void* ret) {
 
 void Digit_decRef(Digit* digit) {
 	assert(digit != NULL);
-	--refCount;
+	refCountDec(DigitR);
 	if(--digit->refs == 0) {
 		switch(digit->count) {
 			case 4: Node_decRef(digit->items[3]);
@@ -134,7 +142,7 @@ void* Digit_decRefRet(Digit* digit, void* ret) {
 
 void Tree_decRef(Tree* tree) {
 	assert(tree != NULL);
-	--refCount;
+	refCountDec(TreeR);
 	if(--tree->refs == 0) {
 		switch(tree->type) {
 			case EmptyT:
@@ -180,7 +188,7 @@ void* IterCons_decRefRet(IterCons* cons, void* ret) {
 Tree* Tree_alloc() {
 	Tree* tree = malloc(sizeof(Tree));
 	tree->refs = 1;
-	++refCount;
+	refCountInc(TreeR);
 	return tree;
 }
 
@@ -192,14 +200,14 @@ Deep* Deep_alloc() {
 Digit* Digit_alloc() {
 	Digit* digit = malloc(sizeof(Digit));
 	digit->refs = 1;
-	++refCount;
+	refCountInc(DigitR);
 	return digit;
 }
 
 Node* Node_alloc() {
 	Node* node = malloc(sizeof(Node));
 	node->refs = 1;
-	++refCount;
+	refCountInc(NodeR);
 	return node;
 }
 
@@ -217,7 +225,7 @@ Iter* Iter_alloc() {
 
 Tree* Empty_make() {
 	++emptyTree.refs;
-	++refCount;
+	refCountInc(TreeR);
 	return &emptyTree;
 }
 
@@ -354,6 +362,8 @@ Iter* Iter_make(IterCons* stack) {
 
 // {{{ print
 
+#ifndef NDEBUG
+
 static void Indent_fprint(FILE* file, int indent) {
 	// fprintf(file, "%d ", indent);
 	for(int i = 0; i < indent; ++i)
@@ -478,6 +488,8 @@ void Iter_fprint(
 void Iter_print(Iter* iter, bool showNode) {
 	Iter_fprint(stdout, iter, 0, showNode, showInt);
 }
+
+#endif
 
 // }}}
 
@@ -731,11 +743,9 @@ View* Tree_viewRightPtr(Tree* tree) {
 static Tree* Tree_fromNodes(size_t size, size_t count, Node** nodes) {
 	if(count == 0) return Empty_make();
 	if(count == 1) return Single_make(nodes[0]);
-	if(count <= 8) {
-		size_t mid = count >> 1;
-		return Deep_make(size, Digit_makeNS(mid, nodes),
-			Empty_make(), Digit_makeNS(count - mid, nodes + mid));
-	}
+	if(count <= 8) return Deep_make(size,
+		Digit_makeNS(count >> 1, nodes), Empty_make(),
+		Digit_makeNS(count - (count >> 1), nodes + (count >> 1)));
 	size_t countN = (count + 2) / 3 - 2;
 	Node** nodesN = malloc(countN * sizeof(Node*));
 	for(size_t i = 2, j = 3; i < countN; ++i, j += 3)

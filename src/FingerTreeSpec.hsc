@@ -172,12 +172,12 @@ freeSplit ptr = do
 -- {{{ check
 
 checkRefs :: IO a -> IO a
-checkRefs m = do
-  x <- refCount
-  m' <- m
-  y <- refCount
-  assertEqual "ref count" x y
-  return m'
+checkRefs m = foldr check m [minBound..maxBound] where
+  check (r :: RefType) m = do
+    let r' = fromIntegral (fromEnum r)
+    (x, a, y) <- (,,) <$> refCount r' <*> m <*> refCount r'
+    assertEqual ("ref count " ++ show r) x y
+    return a
 
 checkView :: Maybe (Int, S.Seq Int) -> Ptr View -> IO ()
 checkView expect view = peek view >>= \View{..} -> case expect of
@@ -234,7 +234,7 @@ spec = describe "FingerTree" $ do
   prop "appendRight" $ \x -> checkingTree $ \xs ts ->
     bracket (tree_appendRight ts (intToPtr x)) tree_decRef $ \tree' ->
       liftIO $ equalTree (xs S.|> x) tree'
-  prop "iter" . checkingTree $ \xs ts ->
+  prop "iterNext" . checkingTree $ \xs ts ->
     bracket (iter_fromTree ts) free $ \iter -> do
       liftIO . forM_ (toList xs) $ \x -> do
         iter_empty iter >>= assertEqual "iter_empty" False
