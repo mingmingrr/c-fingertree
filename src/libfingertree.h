@@ -1,15 +1,7 @@
 #pragma once
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <stddef.h>
-#include <stdint.h>
 #include <stdbool.h>
-#include <memory.h>
-
-#ifndef NDEBUG
-
-void showInt(FILE* file, void* num);
 
 typedef enum RefType {
 	TreeR = 0,
@@ -17,9 +9,13 @@ typedef enum RefType {
 	DigitR = 2
 } RefType;
 
+#ifndef NDEBUG
+
 extern long refCounts[3];
 
 long refCountGet(RefType type);
+
+void showInt(FILE* file, void* num);
 
 #endif
 
@@ -35,7 +31,7 @@ typedef struct Node {
 typedef struct Digit {
 	size_t   refs;
 	size_t   size;
-	unsigned count;
+	char     count;
 	Node*    items[4];
 } Digit;
 
@@ -144,13 +140,13 @@ Tree* Deep_make(size_t size, Digit* left, Tree* middle, Digit* right);
 Tree* Deep_makeS(Digit* left, Tree* middle, Digit* right);
 
 Digit* Digit_make(
-	size_t size, size_t count,
+	size_t size, char count,
 	Node* n0, Node* n1, Node* n2, Node* n3
 );
 
-Digit* Digit_makeN(size_t size, size_t count, Node** nodes);
+Digit* Digit_makeN(size_t size, char count, Node** nodes);
 
-Digit* Digit_makeNS(size_t count, Node** nodes);
+Digit* Digit_makeNS(char count, Node** nodes);
 
 Digit* Digit_fromNode(Node* node);
 
@@ -158,7 +154,7 @@ Node* Node_make(size_t size, Node* n0, Node* n1, Node* n2);
 
 Node* Node_makeS(Node* n0, Node* n1, Node* n2);
 
-Node* Node_makeNS(size_t count, Node** nodes);
+Node* Node_makeNS(char count, Node** nodes);
 
 Node* Node_make1(void* item);
 

@@ -1,12 +1,9 @@
 #include "libfingertree.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
 #include <assert.h>
-#include <memory.h>
 
 #ifndef NDEBUG
 void showInt(FILE* file, void* num) {
@@ -41,7 +38,7 @@ static int Node_count(Node* node) {
 }
 
 static Tree* Tree_fromDigit(Digit* digit) {
-	for(size_t i = 0; i < digit->count; ++i)
+	for(char i = 0; i < digit->count; ++i)
 		Node_incRef(digit->items[i]);
 	switch(digit->count) {
 		case 0: return Empty_make();
@@ -255,7 +252,7 @@ Tree* Deep_makeS(Digit* left, Tree* middle, Digit* right) {
 
 
 Digit* Digit_make(
-	size_t size, size_t count,
+	size_t size, char count,
 	Node* n0, Node* n1, Node* n2, Node* n3
 ) {
 	assert(1 <= count && count <= 4);
@@ -269,7 +266,7 @@ Digit* Digit_make(
 	return digit;
 }
 
-Digit* Digit_makeN(size_t size, size_t count, Node** nodes) {
+Digit* Digit_makeN(size_t size, char count, Node** nodes) {
 	switch(count) {
 		case 1: return Digit_make(size,
 			count, nodes[0], NULL, NULL, NULL);
@@ -283,7 +280,7 @@ Digit* Digit_makeN(size_t size, size_t count, Node** nodes) {
 	}
 }
 
-Digit* Digit_makeNS(size_t count, Node** nodes) {
+Digit* Digit_makeNS(char count, Node** nodes) {
 	assert(nodes[0] != NULL);
 	size_t size = nodes[0]->size;
 	switch(count) {
@@ -318,7 +315,7 @@ Node* Node_makeS(Node* n0, Node* n1, Node* n2) {
 	return Node_make(size, n0, n1, n2);
 }
 
-Node* Node_makeNS(size_t count, Node** nodes) {
+Node* Node_makeNS(char count, Node** nodes) {
 	switch(count) {
 		case 2: return Node_make(
 			nodes[0]->size + nodes[1]->size,
@@ -662,7 +659,7 @@ static View Tree_viewLeftN(Tree* tree) {
 			Node* head = Node_incRef(left->items[0]);
 			if(left->count == 1) return (View){ head,
 				Tree_pullLeft(tree->deep->middle, tree->deep->right) };
-			for(size_t i = 1; i < left->count; ++i)
+			for(char i = 1; i < left->count; ++i)
 				Node_incRef(left->items[i]);
 			Tree* tail = Deep_make(tree->deep->size - head->size,
 				Digit_make(left->size - head->size, left->count - 1,
@@ -706,7 +703,7 @@ static View Tree_viewRightN(Tree* tree) {
 			Node* last = Node_incRef(right->items[right->count-1]);
 			if(right->count == 1) return (View){ last,
 				Tree_pullRight(tree->deep->middle, tree->deep->left) };
-			for(size_t i = 0; i < right->count - 1; ++i)
+			for(char i = 0; i < right->count - 1; ++i)
 				Node_incRef(right->items[i]);
 			Tree* init = Deep_make(tree->deep->size - last->size,
 				Digit_incRef(tree->deep->left),
@@ -904,7 +901,7 @@ static void** Node_toArrayItems(Node* node, void** items) {
 
 static void** Digit_toArrayItems(Digit* digit, void** items) {
 	assert(digit != NULL);
-	for(size_t i = 0; i < digit->count; ++i)
+	for(char i = 0; i < digit->count; ++i)
 		items = Node_toArrayItems(digit->items[i], items);
 	return items;
 }
@@ -943,10 +940,10 @@ Tree* Tree_extend(Tree* xs, Tree* ys) {
 			case SingleT: return Tree_appendRightN(xs, Node_incRef(ys->single));
 			case DeepT: {
 				size_t size = xs->deep->size + ys->deep->size;
-				Node* mid[8]; size_t count = 0;
+				Node* mid[8]; char count = 0;
 				for(; count < xs->deep->right->count; ++count)
 					mid[count] = Node_incRef(xs->deep->right->items[count]);
-				for(size_t i = 0; i < ys->deep->left->count; ++i, ++count)
+				for(char i = 0; i < ys->deep->left->count; ++i, ++count)
 					mid[count] = Node_incRef(ys->deep->left->items[i]);
 				Tree* right = Tree_incRef(ys->deep->middle);
 				switch(count) {
@@ -1003,7 +1000,7 @@ static void* Node_index(Node* node, size_t index) {
 
 static void* Digit_index(Digit* digit, size_t index) {
 	assert(index < digit->size);
-	for(size_t i = 0; i < digit->count; ++i)
+	for(char i = 0; i < digit->count; ++i)
 		if(index < digit->items[i]->size)
 			return Node_index(digit->items[i], index);
 		else
@@ -1056,10 +1053,10 @@ static Node* Node_update(Node* node, size_t index, void* value) {
 static Digit* Digit_update(Digit* digit, size_t index, void* value) {
 	assert(index < digit->size);
 	Node* items[4] = {NULL, NULL, NULL, NULL};
-	for(size_t i = 0; i < digit->count; ++i)
+	for(char i = 0; i < digit->count; ++i)
 		if(index < digit->items[i]->size) {
 			items[i] = Node_update(digit->items[i], index, value);
-			for(size_t j = i + 1; j < digit->count; ++j)
+			for(char j = i + 1; j < digit->count; ++j)
 				items[j] = Node_incRef(digit->items[j]);
 			return Digit_make(digit->size, digit->count,
 				items[0], items[1], items[2], items[3]);
@@ -1105,7 +1102,7 @@ static Split Tree_splitAtN(Tree* tree, size_t index);
 static Split Deep_splitLeftN(Deep* deep, size_t index) {
 	size_t size, dsize = 0;
 	Node* prefix[4] = { NULL, NULL, NULL, NULL };
-	for(size_t i = 0; i < deep->left->count; ++i)
+	for(char i = 0; i < deep->left->count; ++i)
 		if(index >= (size = deep->left->items[i]->size)) {
 			prefix[i] = Node_incRef(deep->left->items[i]);
 			index -= size; dsize += size;
@@ -1116,7 +1113,7 @@ static Split Deep_splitLeftN(Deep* deep, size_t index) {
 				Tree_pullLeft(deep->middle, deep->right) };
 		} else {
 			Node* suffix[4] = { NULL, NULL, NULL, NULL };
-			for(size_t j = i + 1, k = 0; j < deep->left->count; ++j, ++k)
+			for(char j = i + 1, k = 0; j < deep->left->count; ++j, ++k)
 				suffix[k] = Node_incRef(deep->left->items[j]);
 			return (Split){
 				Tree_fromNodes(dsize, i, prefix),
@@ -1132,12 +1129,12 @@ static Split Deep_splitLeftN(Deep* deep, size_t index) {
 static Split Deep_splitRightN(Deep* deep, size_t index) {
 	size_t size, dsize = 0;
 	Node* prefix[4] = { NULL, NULL, NULL, NULL };
-	for(size_t i = 0; i < deep->right->count; ++i)
+	for(char i = 0; i < deep->right->count; ++i)
 		if(index >= (size = deep->right->items[i]->size)) {
 			prefix[i] = Node_incRef(deep->right->items[i]);
 			index -= size; dsize += size;
 		} else if(i == 0) {
-			for(size_t j = 1; j < deep->right->count; ++j)
+			for(char j = 1; j < deep->right->count; ++j)
 				prefix[j-1] = Node_incRef(deep->right->items[j]);
 			return (Split){
 				Tree_pullRight(deep->middle, deep->left),
@@ -1146,7 +1143,7 @@ static Split Deep_splitRightN(Deep* deep, size_t index) {
 					deep->right->count - 1, prefix) };
 		} else {
 			Node* suffix[4] = { NULL, NULL, NULL, NULL };
-			for(size_t j = i + 1, k = 0; j < deep->right->count; ++j, ++k)
+			for(char j = i + 1, k = 0; j < deep->right->count; ++j, ++k)
 				suffix[k] = Node_incRef(deep->right->items[j]);
 			return (Split){
 				Deep_make(deep->size - deep->right->size + dsize,
