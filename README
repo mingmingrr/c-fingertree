@@ -1,0 +1,5 @@
+FingerTree
+==========
+
+C implementation of a fingertree based on Haskell's Data.Sequence.
+
