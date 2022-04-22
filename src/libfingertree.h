@@ -3,221 +3,221 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-typedef enum RefType {
-	TreeR = 0,
-	NodeR = 1,
-	DigitR = 2
-} RefType;
+typedef enum FRefType {
+	FTreeR = 0,
+	FNodeR = 1,
+	FDigitR = 2
+} FRefType;
 
 #ifndef NDEBUG
 
 extern long refCounts[3];
 
-long refCountGet(RefType type);
+long refCountGet(FRefType type);
 
 void showInt(FILE* file, void* num);
 
 #endif
 
-typedef struct Node {
+typedef struct FNode {
 	size_t refs;
 	size_t size;
 	union {
 		void* value;
-		struct Node* items[3];
+		struct FNode* items[3];
 	};
-} Node;
+} FNode;
 
-typedef struct Digit {
+typedef struct FDigit {
 	size_t   refs;
 	size_t   size;
 	char     count;
-	Node*    items[4];
-} Digit;
+	FNode*    items[4];
+} FDigit;
 
-typedef struct Tree Tree;
+typedef struct FTree FTree;
 
-typedef struct Deep {
+typedef struct FDeep {
 	size_t size;
-	Digit* left;
-	Tree*  middle;
-	Digit* right;
-} Deep;
+	FDigit* left;
+	FTree*  middle;
+	FDigit* right;
+} FDeep;
 
-typedef enum TreeType {
-	EmptyT  = 0,
-	SingleT = 1,
-	DeepT   = 2
-} TreeType;
+typedef enum FTreeType {
+	FEmptyT  = 0,
+	FSingleT = 1,
+	FDeepT   = 2
+} FTreeType;
 
-struct Tree {
+struct FTree {
 	size_t refs;
-	TreeType type;
+	FTreeType type;
 	union {
 		void* empty;
-		Node* single;
-		Deep* deep;
+		FNode* single;
+		FDeep* deep;
 	};
 };
 
-typedef enum IterType {
-	TreeI  = 0,
-	DigitI = 1,
-	NodeI  = 2
-} IterType;
+typedef enum FIterType {
+	FTreeI  = 0,
+	FDigitI = 1,
+	FNodeI  = 2
+} FIterType;
 
-typedef struct IterCons {
-	IterType type;
+typedef struct FIterCons {
+	FIterType type;
 	unsigned index;
 	union {
-		Tree* tree;
-		Node* node;
-		Digit* digit;
+		FTree* tree;
+		FNode* node;
+		FDigit* digit;
 	};
-	struct IterCons* next;
-} IterCons;
+	struct FIterCons* next;
+} FIterCons;
 
-typedef struct Iter {
-	IterCons* stack;
-} Iter;
+typedef struct FIter {
+	FIterCons* stack;
+} FIter;
 
-typedef struct View {
+typedef struct FView {
 	void* item;
-	Tree* tree;
-} View;
+	FTree* tree;
+} FView;
 
-typedef struct Split {
-	Tree* left;
+typedef struct FSplit {
+	FTree* left;
 	union {
 		void* item;
-		Node* node;
+		FNode* node;
 	};
-	Tree* right;
-} Split;
+	FTree* right;
+} FSplit;
 
-Tree* Tree_incRef(Tree* tree);
+FTree* FTree_incRef(FTree* tree);
 
-Digit* Digit_incRef(Digit* digit);
+FDigit* FDigit_incRef(FDigit* digit);
 
-Node* Node_incRef(Node* node);
+FNode* FNode_incRef(FNode* node);
 
-IterCons* IterCons_incRef(IterCons* cons);
+FIterCons* FIterCons_incRef(FIterCons* cons);
 
-void Node_decRef(Node* node);
+void FNode_decRef(FNode* node);
 
-void* Node_decRefRet(Node* node, void* ret);
+void* FNode_decRefRet(FNode* node, void* ret);
 
-void Digit_decRef(Digit* digit);
+void FDigit_decRef(FDigit* digit);
 
-void* Digit_decRefRet(Digit* digit, void* ret);
+void* FDigit_decRefRet(FDigit* digit, void* ret);
 
-void Tree_decRef(Tree* tree);
+void FTree_decRef(FTree* tree);
 
-void* Tree_decRefRet(Tree* tree, void* ret);
+void* FTree_decRefRet(FTree* tree, void* ret);
 
-void IterCons_decRef(IterCons* cons);
+void FIterCons_decRef(FIterCons* cons);
 
-void* IterCons_decRefRet(IterCons* cons, void* ret);
+void* FIterCons_decRefRet(FIterCons* cons, void* ret);
 
-Tree* Tree_alloc();
+FTree* FTree_alloc();
 
-Deep* Deep_alloc();
+FDeep* FDeep_alloc();
 
-Digit* Digit_alloc();
+FDigit* FDigit_alloc();
 
-Node* Node_alloc();
+FNode* FNode_alloc();
 
-IterCons* IterCons_alloc();
+FIterCons* FIterCons_alloc();
 
-Iter* Iter_alloc();
+FIter* FIter_alloc();
 
-Tree* Empty_make();
+FTree* FEmpty_make();
 
-Tree* Single_make(Node* node);
+FTree* FSingle_make(FNode* node);
 
-Tree* Deep_make(size_t size, Digit* left, Tree* middle, Digit* right);
+FTree* FDeep_make(size_t size, FDigit* left, FTree* middle, FDigit* right);
 
-Tree* Deep_makeS(Digit* left, Tree* middle, Digit* right);
+FTree* FDeep_makeS(FDigit* left, FTree* middle, FDigit* right);
 
-Digit* Digit_make(
+FDigit* FDigit_make(
 	size_t size, char count,
-	Node* n0, Node* n1, Node* n2, Node* n3
+	FNode* n0, FNode* n1, FNode* n2, FNode* n3
 );
 
-Digit* Digit_makeN(size_t size, char count, Node** nodes);
+FDigit* FDigit_makeN(size_t size, char count, FNode** nodes);
 
-Digit* Digit_makeNS(char count, Node** nodes);
+FDigit* FDigit_makeNS(char count, FNode** nodes);
 
-Digit* Digit_fromNode(Node* node);
+FDigit* FDigit_fromNode(FNode* node);
 
-Node* Node_make(size_t size, Node* n0, Node* n1, Node* n2);
+FNode* FNode_make(size_t size, FNode* n0, FNode* n1, FNode* n2);
 
-Node* Node_makeS(Node* n0, Node* n1, Node* n2);
+FNode* FNode_makeS(FNode* n0, FNode* n1, FNode* n2);
 
-Node* Node_makeNS(char count, Node** nodes);
+FNode* FNode_makeNS(char count, FNode** nodes);
 
-Node* Node_make1(void* item);
+FNode* FNode_make1(void* item);
 
-IterCons* IterCons_make(IterType type, void* item, IterCons* next);
+FIterCons* FIterCons_make(FIterType type, void* item, FIterCons* next);
 
-Iter* Iter_replace(Iter* iter, IterType type, void* item);
+FIter* FIter_replace(FIter* iter, FIterType type, void* item);
 
-Iter* Iter_make(IterCons* stack);
+FIter* FIter_make(FIterCons* stack);
 
 #ifndef NDEBUG
 
-void Digit_fprint(FILE*, Digit*, int indent, void(*show)(FILE*,void*));
+void FDigit_fprint(FILE*, FDigit*, int indent, void(*show)(FILE*,void*));
 
-void Digit_print(Digit*);
+void FDigit_print(FDigit*);
 
-void Node_fprint(FILE*, Node*, int indent, void(*show)(FILE*,void*));
+void FNode_fprint(FILE*, FNode*, int indent, void(*show)(FILE*,void*));
 
-void Node_print(Node*);
+void FNode_print(FNode*);
 
-void Tree_fprint(FILE*, Tree*, int indent, void(*show)(FILE*,void*));
+void FTree_fprint(FILE*, FTree*, int indent, void(*show)(FILE*,void*));
 
-void Tree_print(Tree*);
+void FTree_print(FTree*);
 
-void Iter_fprint(FILE*, Iter*, int indent, bool showNode, void(*show)(FILE*,void*));
+void FIter_fprint(FILE*, FIter*, int indent, bool showN, void(*show)(FILE*,void*));
 
-void Iter_print(Iter*, bool showNode);
+void FIter_print(FIter*, bool showNode);
 
 #endif
 
-bool Tree_empty(Tree* tree);
+bool FTree_empty(FTree* tree);
 
-size_t Tree_size(Tree* tree);
+size_t FTree_size(FTree* tree);
 
-Tree* Tree_appendLeft(Tree* tree, void* item);
+FTree* FTree_appendLeft(FTree* tree, void* item);
 
-Tree* Tree_appendRight(Tree* tree, void* item);
+FTree* FTree_appendRight(FTree* tree, void* item);
 
-View Tree_viewLeft(Tree* tree);
+FView FTree_viewLeft(FTree* tree);
 
-View* Tree_viewLeftPtr(Tree* tree);
+FView* FTree_viewLeftPtr(FTree* tree);
 
-View Tree_viewRight(Tree* tree);
+FView FTree_viewRight(FTree* tree);
 
-View* Tree_viewRightPtr(Tree* tree);
+FView* FTree_viewRightPtr(FTree* tree);
 
-Tree* Tree_fromArray(size_t size, void** items);
+FTree* FTree_fromArray(size_t size, void** items);
 
-bool Iter_empty(Iter* iter);
+bool FIter_empty(FIter* iter);
 
-void* Iter_next(Iter* iter);
+void* FIter_next(FIter* iter);
 
-Iter* Iter_fromTree(Tree* tree);
+FIter* FIter_fromTree(FTree* tree);
 
-void** Tree_toArray(Tree* tree);
+void** FTree_toArray(FTree* tree);
 
-void* Tree_index(Tree* tree, size_t index);
+void* FTree_index(FTree* tree, size_t index);
 
-Tree* Tree_update(Tree* tree, size_t index, void* value);
+FTree* FTree_update(FTree* tree, size_t index, void* value);
 
-Split Tree_splitAt(Tree* tree, size_t index);
+FSplit FTree_splitAt(FTree* tree, size_t index);
 
-Split* Tree_splitAtPtr(Tree* tree, size_t index);
+FSplit* FTree_splitAtPtr(FTree* tree, size_t index);
 
-Tree* Tree_replicate(size_t count, void* item);
+FTree* FTree_replicate(size_t count, void* item);
 
 // vim: set foldmethod=marker foldlevel=0 :
